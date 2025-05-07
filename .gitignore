@@ -1,0 +1,45 @@
+# Ignore build artifacts from kernel module compilation
+*.o
+*.ko
+*.a
+*.mod
+*.mod.c
+*.cmd
+*.order
+*.symvers
+*.tmp_versions/
+*.depend
+*.d
+*.o.d
+built-in.*
+Module.symvers
+modules.order
+
+# Ignore temporary files and editor backups
+*~
+*.swp
+*.swo
+*.bak
+
+# Ignore logs and debug files
+*.log
+build.log
+core
+.vscode/
+.idea/
+
+# Ignore user-specific or local configuration files
+.config
+.local/
+.cache/
+
+# Ignore specific directories (optional, if not part of version control)
+src/*.o
+include/*.o
+
+# Allow source and header files to be tracked
+!src/*.c
+!include/*.h
+
+# Ignore err_commit_msg
+err_commit_msg.txt
