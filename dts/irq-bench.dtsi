@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (C) 2023 Steve Jeong <steve@how2flow.net>
+ */
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+/ {
+	irq_bench: irq-bench {
+		compatible = "benchmark,irq";
+		interrupts = <GIC_SPI 668 IRQ_TYPE_LEVEL_HIGH>;
+		status = "okay";
+	};
+};
