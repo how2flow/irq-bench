@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (C) 2023 Steve Jeong <steve@how2flow.net>
+ */
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+/ {
+	/*
+	 * If the system does not have a device (e.g. pic) 
+	 * to change the polarity of the interrupt source,
+	 * only ipi benchmark is supported.
+	 */
+	irq_bench: irq-bench {
+		compatible = "generic,irq-bench";
+		/* gic_base, pic_base */
+		reg = <0x0 0x80000000 0x0 0x10000>;
+		interrupts = <GIC_SPI 671 IRQ_TYPE_LEVEL_HIGH>;
+		status = "okay";
+	};
+};
