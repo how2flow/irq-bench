@@ -27,6 +27,12 @@ $ make clean && make builtin
 ### Cross-compilation
 
 ```
-$ make integrate KERNEL=/path/to/source
+$ make integrate KERNEL=/path/to/source DTS=/path/to/dts
+```
+<br>
+
+e.g)
+```
+$ make integrate KERNEL=/home/linux DTS=arch/arm64/boot/dts/broadcom/bcm2711-rpi-4-b.dts
 ```
 <br>
