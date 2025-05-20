@@ -17,6 +17,7 @@
 #define PRIORITY_VALUE 0x20
 
 enum bench_type {
+	BENCH_EOI,
 	BENCH_SGI,
 	BENCH_SPI,
 /* count termination */
