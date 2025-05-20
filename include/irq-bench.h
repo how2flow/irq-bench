@@ -18,6 +18,7 @@
 
 enum bench_type {
 	BENCH_SGI,
+	BENCH_EOI,
 	BENCH_SPI,
 /* count termination */
 	BENCH_TYPES,
