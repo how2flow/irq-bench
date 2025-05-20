@@ -3,15 +3,19 @@
 # Makefile for building a Linux kernel module or built-in object using GNU Make.
 
 # Configuration Variables
-CONFIG_NAME := IRQ_BENCH
-MODULE_NAME := irq-bench
-SRC_DIR := $(CURDIR)/src
-INC_DIR := $(CURDIR)/include
-KERNEL ?= /lib/modules/$(shell uname -r)/build
 ARCH ?= $(shell uname -m)
 CROSS_COMPILE ?=
+KERNEL ?= /lib/modules/$(shell uname -r)/build
+DTS ?= $(KERNEL)/arch/$(ARCH)/boot/dts
+CONFIG_NAME := IRQ_BENCH
+MODULE_NAME := irq-bench
+DTS_DIR := $(CURDIR)/dts
+INC_DIR := $(CURDIR)/include
+SRC_DIR := $(CURDIR)/src
 
 # Source Files
+DTSFILE := $(wildcard $(DTS_DIR)/*.dts*)
+HEADERS := $(wildcard $(INC_DIR)/*.h)
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(patsubst %.c, %.o, $(SOURCES))
 
@@ -42,6 +46,11 @@ integrate:
 	@echo "Integrating $(MODULE_NAME) into kernel source tree at $(KERNEL)"
 	@mkdir -p $(KERNEL)/drivers/misc
 	@cp $(SOURCES) $(KERNEL)/drivers/misc/
+	@cp $(HEADERS) $(KERNEL)/drivers/misc/
+	@cp $(DTSFILE) $$(dirname "$(KERNEL)/$(DTS)")
+	@if ! grep -q "$(MODULE_NAME)" $(KERNEL)/$(DTS); then \
+		echo '#include "irq-bench.dtsi"' >> $(KERNEL)/$(DTS); \
+	fi
 	@if ! grep -q "$(MODULE_NAME)" $(KERNEL)/drivers/misc/Makefile; then \
 		echo 'obj-$$\(CONFIG_$(CONFIG_NAME)) += $(MODULE_NAME).o' >> $(KERNEL)/drivers/misc/Makefile; \
 		sed -i 's/\\(CONFIG_$(CONFIG_NAME))/(CONFIG_$(CONFIG_NAME))/g' $(KERNEL)/drivers/misc/Makefile; \
@@ -51,6 +60,7 @@ integrate:
 		echo "" >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo "config $(CONFIG_NAME)" >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo '	bool "IRQ Benchmark Driver"' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	default y' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo '	help' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo '	  Enable the IRQ Benchmark driver (irq-bench) for performance testing.' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo "endmenu" >> $(KERNEL)/drivers/misc/Kconfig; \
