@@ -13,6 +13,7 @@
  */
 
 #include <linux/irq.h>
+#include <linux/irqchip/arm-gic-v3.h>
 #include <linux/irqdesc.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -47,6 +48,30 @@ static int irq_init(int irq)
 	irq_bench_hwirq = (int)irqd_to_hwirq(data);
 
 	return 0;
+}
+
+/* EOI benchmark functions */
+static void eoi_bench_setup(struct bench_list *list)
+{
+	list->valid = false;
+	list->stats = 0;
+}
+
+static void eoi_bench_start(struct bench_list *list)
+{
+	int ntimes, spurious_id = 1023;
+
+	for (ntimes = 0; bench_times > ntimes; ntimes++) {
+		/* Write to EOI are ignored */
+		gic_write_dir(spurious_id);
+	}
+}
+
+static void eoi_bench_end(struct bench_list *list)
+{
+	list->end_time = ktime_get();
+	list->total_ns = ktime_to_ns(ktime_sub(list->end_time, list->start_time));
+	list->valid = true;
 }
 
 /* IPI benchmark functions */
@@ -144,6 +169,13 @@ static void spi_bench_end(struct bench_list *list)
 }
 
 /* Benchmark list definitions */
+static struct bench_list eoi_bench = {
+	.type = "eoi",
+	.setup = eoi_bench_setup,
+	.start = eoi_bench_start,
+	.end = eoi_bench_end,
+};
+
 static struct bench_list ipi_bench = {
 	.type = "ipi",
 	.setup = ipi_bench_setup,
@@ -260,6 +292,7 @@ static ssize_t set_benchmark_times(struct kobject *kobj, struct kobj_attribute *
 /* Sysfs attributes */
 static struct kobj_attribute bench_setup_attr = __ATTR(benchmark, 0200, NULL, set_benchmark);
 static struct kobj_attribute bench_times_attr = __ATTR(times, 0644, get_benchmark_times, set_benchmark_times);
+static struct kobj_attribute eoi_result_attr = __ATTR(eoi, 0444, get_bench_result, NULL);
 static struct kobj_attribute ipi_result_attr = __ATTR(ipi, 0444, get_bench_result, NULL);
 static struct kobj_attribute spi_result_attr = __ATTR(spi, 0444, get_bench_result, NULL);
 
@@ -277,6 +310,7 @@ static int setup_sysfs_attrs(void)
 		return -ENOMEM;
 
 	/* benchmark irqs */
+	sysfs_attrs[BENCH_EOI] = &eoi_result_attr.attr;
 	sysfs_attrs[BENCH_PPI] = &ipi_result_attr.attr;
 	if (pic_base)
 		sysfs_attrs[BENCH_SPI] = &spi_result_attr.attr;
@@ -325,6 +359,7 @@ static int irq_bench_probe(struct platform_device *pdev)
 	}
 
 	/* Initialize bench commands */
+	benchmark_list[BENCH_EOI] = eoi_bench;
 	benchmark_list[BENCH_PPI] = ipi_bench;
 	if (pic_base) {
 		benchmark_list[BENCH_SPI] = spi_bench;
