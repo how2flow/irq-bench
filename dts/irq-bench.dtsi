@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (C) 2025 Steve Jeong <steve@how2flow.net>
+ */
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+/ {
+	/*
+	 * If the system does not have a device (e.g. pic)
+	 * to change the polarity of the interrupt source,
+	 * only sgi(ipi) benchmark is supported.
+	 *
+	 * reg: Maps the pic base address and the gic base address.
+	 *      idx 0: pic_base addr (optional)
+	 *      idx 1: gic_base addr (optional)
+	 *
+	 * interrupts: 700 is an example.
+	 *             However, there are some restrictions to consider:
+	 *             The SoC must include a hardware component—such as a PIC—that can generate the interrupt.
+	 *             The interrupt number must be unused and physically wired on the actual SoC.
+	 */
+	irq_bench: irq-bench {
+		compatible = "generic,irq-bench";
+		/* pic_base, gic_base */
+		reg = <0x0 0x90000000 0x0 0x10000>,
+		      <0x0 0x80000000 0x0 0x10000>;
+		interrupts = <GIC_SPI 700 IRQ_TYPE_LEVEL_HIGH>;
+		status = "okay";
+	};
+};
