@@ -11,6 +11,7 @@ CONFIG_NAME := IRQ_BENCH
 MODULE_NAME := irq-bench
 DTS_DIR := $(CURDIR)/dts
 INC_DIR := $(CURDIR)/include
+PTH_DIR := $(CURDIR)/patches
 SRC_DIR := $(CURDIR)/src
 
 # Source Files
@@ -19,6 +20,7 @@ DTSNAME := $(notdir $(DTSFILE))
 HEADERS := $(wildcard $(INC_DIR)/*.h)
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(patsubst %.c, %.o, $(SOURCES))
+PATCHES := $(wildcard $(PTH_DIR)/*.patch)
 
 # Kernel Module/Object Definition
 obj-$(CONFIG_IRQ_BENCH) += $(MODULE_NAME).o
@@ -67,6 +69,11 @@ integrate:
 		echo '	help' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo '	  Enable the IRQ Benchmark driver (irq-bench) for performance testing.' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo 'endmenu' >> $(KERNEL)/drivers/misc/Kconfig; \
+	fi
+# for virtual machine of hypervisor #
+	@if [ -n "$(VM)" ]; then \
+		git apply --directory=$(KERNEL) --unsafe-paths -R $(PTH_DIR)/arm_arch_timer.patch; \
+		git apply --directory=$(KERNEL) --unsafe-paths $(PTH_DIR)/arm_arch_timer.patch; \
 	fi
 
 clean:
