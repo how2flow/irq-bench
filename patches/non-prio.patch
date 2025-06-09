@@ -1,0 +1,78 @@
+diff --git a/dts/irq-bench.dtsi b/dts/irq-bench.dtsi
+index 78c1975..4f59f84 100644
+--- a/dts/irq-bench.dtsi
++++ b/dts/irq-bench.dtsi
+@@ -12,8 +12,7 @@
+ 	 * only ipi benchmark is supported.
+ 	 *
+ 	 * reg: Maps the gic base address and the pic base address.
+-	 *      idx 0: gic_base addr (mendatory)
+-	 *      idx 1: pic_base addr (optional)
++	 *      idx 0: pic_base addr (mendatory)
+ 	 *
+ 	 * interrupts: 700 is an example.
+ 	 *             However, there are some restrictions to consider:
+@@ -22,9 +21,8 @@
+ 	 */
+ 	irq_bench: irq-bench {
+ 		compatible = "generic,irq-bench";
+-		/* gic_base, pic_base */
+-		reg = <0x0 0x80000000 0x0 0x10000>,
+-		      <0x0 0x90000000 0x0 0x10000>;
++		/* pic_base */
++		reg = <0x0 0x80000000 0x0 0x10000>;
+ 		interrupts = <GIC_SPI 700 IRQ_TYPE_LEVEL_HIGH>;
+ 		status = "okay";
+ 	};
+diff --git a/include/irq-bench.h b/include/irq-bench.h
+index b5f5b9c..5b71e93 100644
+--- a/include/irq-bench.h
++++ b/include/irq-bench.h
+@@ -52,7 +52,6 @@ static struct kobject *irq_kobj;
+ static void ipi_bench_handler(void *info);
+ static irqreturn_t spi_bench_handler(int irq, void *dev_id);
+ 
+-static void __iomem *gic_base;
+ static void __iomem *pic_base;
+ 
+ static int irq_bench_hwirq;
+diff --git a/src/irq-bench.c b/src/irq-bench.c
+index 4643a5d..52a7a87 100644
+--- a/src/irq-bench.c
++++ b/src/irq-bench.c
+@@ -120,17 +120,6 @@ static void ipi_bench_end(struct bench_list *list)
+ /* SPI benchmark functions */
+ static void spi_bench_setup(struct bench_list *list)
+ {
+-	uint32_t mask, offset, value;
+-	int hwirq;
+-
+-	hwirq = irq_bench_hwirq;
+-
+-	offset = (hwirq / 4) * 0x4;
+-	value = readl_relaxed(gic_base + GIC_DIST_PRIO + offset);
+-	mask = 0xFF << ((hwirq % 4) * 8);
+-	value = (value & ~mask) | (PRIORITY_VALUE << ((hwirq % 4) * 8));
+-	writel_relaxed(value, gic_base + GIC_DIST_PRIO + offset);
+-
+ 	list->valid = false;
+ 	list->stats = 0;
+ }
+@@ -337,16 +326,8 @@ static int irq_bench_probe(struct platform_device *pdev)
+ 	/* Initialize IO maps */
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res) {
+-		pr_err("No GIC memory resource found\n");
++		pr_err("No PIC memory resource found\n");
+ 		return -EINVAL;
+-	} else {
+-		gic_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+-	}
+-
+-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+-	if (!res) {
+-		pr_warn("No PIC memory resource found\n");
+-		pr_warn("There is no spi benchmark!\n");
+ 	} else {
+ 		pic_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+ 	}
