@@ -1,0 +1,178 @@
+From ef7fce35d5a3d0d348427e8cf513a0de100801ee Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=EC=A0=95=EA=B4=91=ED=98=84=20=28Steve=20Jeong=29?=
+ <steve.jeong@telechips.com>
+Date: Mon, 4 Aug 2025 16:21:53 +0900
+Subject: [PATCH 1/2] [fea] tcc807x: patch for tick capture
+
+xen patch for tick capture
+
+TCS: XXX-XXXX
+---
+ xen/arch/arm/arm64/entry.S         | 39 ++++++++++++++++++++++++++++--
+ xen/arch/arm/gic.c                 | 19 +++++++++++++++
+ xen/include/asm-arm/arm64/macros.h |  6 +++++
+ xen/include/xen/irq.h              | 10 ++++++++
+ 4 files changed, 72 insertions(+), 2 deletions(-)
+
+diff --git a/xen/arch/arm/arm64/entry.S b/xen/arch/arm/arm64/entry.S
+index 95f1a92684..ec5c5a96e5 100644
+--- a/xen/arch/arm/arm64/entry.S
++++ b/xen/arch/arm/arm64/entry.S
+@@ -22,6 +22,31 @@
+ #define IFLAGS__A__     IFLAGS_A_BIT
+ #define IFLAGS___I_     IFLAGS_I_BIT
+ 
++#define HYP_RAW_CPU_IN     0x0
++#define HYP_RAW_CPU_OUT    0x2
++#define HYP_RAW_TICK_IN    0x8
++#define HYP_RAW_TICK_OUT   0x10
++
++        .macro hyp_tick_store_in
++            adr_this_cpu x10, hyp_tick_raw, x11    /* x10 ← this_cpu(hyp_tick_raw) */
++            mrs     x9, cntpct_el0
++            str     x9, [x10, #HYP_RAW_TICK_IN]    /* tick_in */
++            mrs     x9, mpidr_el1                  /* cpu affinity start at 1 */
++            lsr     x9, x9, #0x8
++            ands    x9, x9, #0xff
++            strh    w9, [x10, #HYP_RAW_CPU_IN]     /* cpu_in */
++        .endm
++
++        .macro hyp_tick_store_out
++            adr_this_cpu x10, hyp_tick_raw, x11    /* x10 ← this_cpu(hyp_tick_raw) */
++            mrs     x9, cntpct_el0
++            str     x9, [x10, #HYP_RAW_TICK_OUT]   /* tick_out */
++            mrs     x9, mpidr_el1
++            lsr     x9, x9, #0x8                   /* cpu affinity start at 1 */
++            ands    x9, x9, #0xff
++            strh    w9, [x10, #HYP_RAW_CPU_OUT]    /* cpu_out */
++        .endm
++
+ /*
+  * Stack pushing/popping (register pairs only). Equivalent to store decrement
+  * before, load increment after.
+@@ -188,13 +213,16 @@
+ 
+         .endm
+ 
+-        .macro  exit, hyp, compat
++        .macro  exit, hyp, compat, trap=common
+ 
+         .if \hyp == 0         /* Guest mode */
+ 
+         bl      leave_hypervisor_to_guest /* Mask IRQ on return */
+ 
+         exit_guest \compat
++        .ifc \trap, irq
++            hyp_tick_store_out
++        .endif
+ 
+         .endif
+ 
+@@ -247,9 +275,16 @@
+         alternative_else_nop_endif
+ 
+         mov     x0, sp
++        .ifc \trap, irq
++            hyp_tick_store_in
++        .endif
+         bl      do_trap_\trap
+ 1:
+-        exit    hyp=0, compat=\compat
++        .ifc \trap, irq
++            exit    hyp=0, compat=\compat, trap=irq
++        .else
++            exit    hyp=0, compat=\compat
++        .endif
+         .endm
+ 
+ 
+diff --git a/xen/arch/arm/gic.c b/xen/arch/arm/gic.c
+index 3b0331b538..714479cd55 100644
+--- a/xen/arch/arm/gic.c
++++ b/xen/arch/arm/gic.c
+@@ -39,6 +39,9 @@
+ #include <asm/acpi.h>
+ 
+ DEFINE_PER_CPU(uint64_t, lr_mask);
++DEFINE_PER_CPU(volatile uint64_t, prev_cpu);
++DEFINE_PER_CPU(volatile uint64_t, prev_tick);
++DEFINE_PER_CPU(struct hyp_tick_raw, hyp_tick_raw);
+ 
+ #undef GIC_DEBUG
+ 
+@@ -380,6 +383,20 @@ void gic_interrupt(struct cpu_user_regs *regs, int is_fiq)
+ {
+     unsigned int irq;
+ 
++    isb();
++    if (!this_cpu(hyp_tick_raw).flag)
++    {
++        this_cpu(hyp_tick_raw).irq = 0;
++        this_cpu(prev_cpu) = this_cpu(hyp_tick_raw).cpu_in;
++        this_cpu(prev_tick) = this_cpu(hyp_tick_raw).tick_in;
++        this_cpu(hyp_tick_raw).flag = true;
++    }
++    else /* Compare */
++    {
++        this_cpu(hyp_tick_raw).latency_tick = (this_cpu(hyp_tick_raw).tick_out - this_cpu(prev_tick));
++        this_cpu(prev_cpu) = this_cpu(hyp_tick_raw).cpu_in;
++        this_cpu(prev_tick) = this_cpu(hyp_tick_raw).tick_in;
++    }
+     do  {
+         /* Reading IRQ will ACK it */
+         irq = gic_hw_ops->read_irq();
+@@ -388,6 +405,7 @@ void gic_interrupt(struct cpu_user_regs *regs, int is_fiq)
+         {
+             isb();
+             do_IRQ(regs, irq, is_fiq);
++            this_cpu(hyp_tick_raw).irq = irq;
+         }
+         else if ( is_lpi(irq) )
+         {
+@@ -397,6 +415,7 @@ void gic_interrupt(struct cpu_user_regs *regs, int is_fiq)
+         else if ( unlikely(irq < 16) )
+         {
+             do_sgi(regs, irq);
++            this_cpu(hyp_tick_raw).irq = irq;
+         }
+         else
+         {
+diff --git a/xen/include/asm-arm/arm64/macros.h b/xen/include/asm-arm/arm64/macros.h
+index 140e223b4c..7b506a05f1 100644
+--- a/xen/include/asm-arm/arm64/macros.h
++++ b/xen/include/asm-arm/arm64/macros.h
+@@ -21,6 +21,12 @@
+     ldr     \dst, [\dst, \tmp]
+     .endm
+ 
++    .macro  adr_this_cpu, dst, sym, tmp
++    ldr     \dst, =per_cpu__\sym
++    mrs     \tmp, tpidr_el2
++    add     \dst, \dst, \tmp
++    .endm
++
+     .macro  ret
+         /* ret opcode */
+         .inst 0xd65f03c0
+diff --git a/xen/include/xen/irq.h b/xen/include/xen/irq.h
+index 43d567fe44..7cb0936b18 100644
+--- a/xen/include/xen/irq.h
++++ b/xen/include/xen/irq.h
+@@ -174,4 +174,14 @@ unsigned int arch_hwdom_irqs(domid_t);
+ void arch_evtchn_bind_pirq(struct domain *, int pirq);
+ #endif
+ 
++struct hyp_tick_raw {
++    volatile uint16_t cpu_in;
++    volatile uint16_t cpu_out;
++    volatile uint64_t tick_in;
++    volatile uint64_t tick_out;
++    volatile uint64_t latency_tick;
++    volatile uint32_t irq;
++    bool flag;
++};
++
+ #endif /* __XEN_IRQ_H__ */
+-- 
+2.25.1
+
