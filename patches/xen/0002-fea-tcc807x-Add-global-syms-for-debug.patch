@@ -1,0 +1,61 @@
+From 9203a0f4943b26d47c409bada70858077618e375 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=EC=A0=95=EA=B4=91=ED=98=84=20=28Steve=20Jeong=29?=
+ <steve.jeong@telechips.com>
+Date: Wed, 6 Aug 2025 17:27:42 +0900
+Subject: [PATCH 2/2] [fea] tcc807x: Add global syms for debug
+
+TCS: XXX-XXXX
+---
+ xen/arch/arm/gic.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/xen/arch/arm/gic.c b/xen/arch/arm/gic.c
+index 714479cd55..e451dd1646 100644
+--- a/xen/arch/arm/gic.c
++++ b/xen/arch/arm/gic.c
+@@ -41,10 +41,12 @@
+ DEFINE_PER_CPU(uint64_t, lr_mask);
+ DEFINE_PER_CPU(volatile uint64_t, prev_cpu);
+ DEFINE_PER_CPU(volatile uint64_t, prev_tick);
++DEFINE_PER_CPU(volatile uint64_t, temp_tick);
+ DEFINE_PER_CPU(struct hyp_tick_raw, hyp_tick_raw);
+ 
+ #undef GIC_DEBUG
+ 
++struct hyp_tick_raw hyp_tick_raw_snapshot;
+ const struct gic_hw_operations *gic_hw_ops;
+ 
+ static void __init __maybe_unused build_assertions(void)
+@@ -378,6 +380,17 @@ static void do_sgi(struct cpu_user_regs *regs, enum gic_sgi sgi)
+     gic_hw_ops->deactivate_irq(desc);
+ }
+ 
++void gic_tick_copy(unsigned int cpu)
++{
++    isb();
++    this_cpu(hyp_tick_raw).tick_in = this_cpu(temp_tick);
++
++    if (cpu >= NR_CPUS)
++        return;
++
++    memcpy(&hyp_tick_raw_snapshot, &per_cpu(hyp_tick_raw, cpu), sizeof(struct hyp_tick_raw));
++}
++
+ /* Accept an interrupt from the GIC and dispatch its handler */
+ void gic_interrupt(struct cpu_user_regs *regs, int is_fiq)
+ {
+@@ -393,9 +406,11 @@ void gic_interrupt(struct cpu_user_regs *regs, int is_fiq)
+     }
+     else /* Compare */
+     {
++        this_cpu(temp_tick) = this_cpu(prev_tick);
+         this_cpu(hyp_tick_raw).latency_tick = (this_cpu(hyp_tick_raw).tick_out - this_cpu(prev_tick));
+         this_cpu(prev_cpu) = this_cpu(hyp_tick_raw).cpu_in;
+         this_cpu(prev_tick) = this_cpu(hyp_tick_raw).tick_in;
++        gic_tick_copy(smp_processor_id());
+     }
+     do  {
+         /* Reading IRQ will ACK it */
+-- 
+2.25.1
+
