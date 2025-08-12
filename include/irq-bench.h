@@ -55,6 +55,6 @@ static irqreturn_t spi_bench_handler(int irq, void *dev_id);
 static void __iomem *gic_base;
 static void __iomem *pic_base;
 
-static int irq_bench_hwirq;
+static irq_hw_number_t irq_bench_hwirq;
 
 #endif
