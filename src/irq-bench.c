@@ -45,7 +45,7 @@ static int irq_init(int irq)
 			return -EINVAL;
 	}
 
-	irq_bench_hwirq = (int)irqd_to_hwirq(data);
+	irq_bench_hwirq = irqd_to_hwirq(data);
 
 	return 0;
 }
@@ -117,7 +117,7 @@ static void sgi_bench_end(struct bench_list *list)
 	list->valid = true;
 }
 
-static void __maybe_unused spi_bench_prio(int irq)
+static void __maybe_unused spi_bench_prio(irq_hw_number_t irq)
 {
 	uint32_t mask, offset, value;
 
@@ -131,7 +131,7 @@ static void __maybe_unused spi_bench_prio(int irq)
 /* SPI benchmark functions */
 static void spi_bench_setup(struct bench_list *list)
 {
-	int hwirq;
+	irq_hw_number_t hwirq;
 
 	hwirq = irq_bench_hwirq;
 
@@ -145,7 +145,7 @@ static void spi_bench_setup(struct bench_list *list)
 static void spi_bench_start(struct bench_list *list)
 {
 	uint32_t offset, value;
-	int hwirq;
+	irq_hw_number_t hwirq;
 
 	hwirq = irq_bench_hwirq;
 	/* convert irqnr to pic index */
@@ -158,7 +158,7 @@ static void spi_bench_start(struct bench_list *list)
 static void spi_bench_end(struct bench_list *list)
 {
 	uint32_t offset, value;
-	int hwirq;
+	irq_hw_number_t hwirq;
 
 	/* time stamp */
 	list->end_time = ktime_get();
