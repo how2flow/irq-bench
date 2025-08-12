@@ -11,9 +11,9 @@
 	 * to change the polarity of the interrupt source,
 	 * only sgi(ipi) benchmark is supported.
 	 *
-	 * reg: Maps the gic base address and the pic base address.
-	 *      idx 0: gic_base addr (mendatory)
-	 *      idx 1: pic_base addr (optional)
+	 * reg: Maps the pic base address and the gic base address.
+	 *      idx 0: pic_base addr (optional)
+	 *      idx 1: gic_base addr (optional)
 	 *
 	 * interrupts: 700 is an example.
 	 *             However, there are some restrictions to consider:
@@ -22,9 +22,9 @@
 	 */
 	irq_bench: irq-bench {
 		compatible = "generic,irq-bench";
-		/* gic_base, pic_base */
-		reg = <0x0 0x80000000 0x0 0x10000>,
-		      <0x0 0x90000000 0x0 0x10000>;
+		/* pic_base, gic_base */
+		reg = <0x0 0x90000000 0x0 0x10000>,
+		      <0x0 0x80000000 0x0 0x10000>;
 		interrupts = <GIC_SPI 700 IRQ_TYPE_LEVEL_HIGH>;
 		status = "okay";
 	};

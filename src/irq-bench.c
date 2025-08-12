@@ -117,19 +117,26 @@ static void sgi_bench_end(struct bench_list *list)
 	list->valid = true;
 }
 
+static void __maybe_unused spi_bench_prio(int irq)
+{
+	uint32_t mask, offset, value;
+
+	offset = (irq / 4) * 0x4;
+	value = readl_relaxed(gic_base + GIC_DIST_PRIO + offset);
+	mask = 0xFF << ((irq % 4) * 8);
+	value = (value & ~mask) | (PRIORITY_VALUE << ((irq % 4) * 8));
+	writel_relaxed(value, gic_base + GIC_DIST_PRIO + offset);
+}
+
 /* SPI benchmark functions */
 static void spi_bench_setup(struct bench_list *list)
 {
-	uint32_t mask, offset, value;
 	int hwirq;
 
 	hwirq = irq_bench_hwirq;
 
-	offset = (hwirq / 4) * 0x4;
-	value = readl_relaxed(gic_base + GIC_DIST_PRIO + offset);
-	mask = 0xFF << ((hwirq % 4) * 8);
-	value = (value & ~mask) | (PRIORITY_VALUE << ((hwirq % 4) * 8));
-	writel_relaxed(value, gic_base + GIC_DIST_PRIO + offset);
+	if (gic_base)
+		spi_bench_prio(hwirq);
 
 	list->valid = false;
 	list->stats = 0;
@@ -337,18 +344,18 @@ static int irq_bench_probe(struct platform_device *pdev)
 	/* Initialize IO maps */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
-		pr_err("No GIC memory resource found\n");
-		return -EINVAL;
-	} else {
-		gic_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (!res) {
 		pr_warn("No PIC memory resource found\n");
 		pr_warn("There is no spi benchmark!\n");
 	} else {
 		pic_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res) {
+		pr_warn("No GIC memory resource found\n");
+		pr_warn("There is no spi prio benchmark!\n");
+	} else {
+		gic_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 	}
 
 	/* Allocate bench commands */
