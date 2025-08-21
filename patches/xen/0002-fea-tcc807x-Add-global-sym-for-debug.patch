@@ -1,0 +1,68 @@
+From 654a82240bf0ee41af8519780cadb56d4a0b1263 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=EC=A0=95=EA=B4=91=ED=98=84=20=28Steve=20Jeong=29?=
+ <steve.jeong@telechips.com>
+Date: Thu, 21 Aug 2025 14:16:42 +0900
+Subject: [PATCH 2/2] [fea] tcc807x: Add global sym for debug
+
+TCS: XXX-XXXX
+---
+ xen/arch/arm/traps.c | 20 ++++++++++++++++----
+ 1 file changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/xen/arch/arm/traps.c b/xen/arch/arm/traps.c
+index 9fe92dd665..baf145e078 100644
+--- a/xen/arch/arm/traps.c
++++ b/xen/arch/arm/traps.c
+@@ -77,6 +77,7 @@ static int debug_stack_lines = 40;
+ #define stack_words_per_line 4
+ #endif
+ 
++struct hyp_tick_raw hyp_tick_raw_snapshot;
+ DEFINE_PER_CPU(struct hyp_tick_raw, hyp_tick_raw);
+ integer_param("debug_stack_lines", debug_stack_lines);
+ 
+@@ -2261,19 +2262,28 @@ void do_trap_guest_serror(struct cpu_user_regs *regs)
+     __do_trap_serror(regs, true);
+ }
+ 
++void do_tick_copy(unsigned int cpu)
++{
++    isb();
++    if (cpu >= NR_CPUS)
++        return;
++
++    memcpy(&hyp_tick_raw_snapshot, &per_cpu(hyp_tick_raw, cpu), sizeof(struct hyp_tick_raw));
++}
++
+ void do_trap_for_tick(int flag)
+ {
+     /* Capture tick */
+     if (!flag) {
+         this_cpu(hyp_tick_raw).tick_in = READ_SYSREG64(CNTPCT_EL0);
+         this_cpu(hyp_tick_raw).cpu_in = READ_SYSREG64(MPIDR_EL1);
+-        this_cpu(hyp_tick_raw).cpu_in >>= 2;
+-        this_cpu(hyp_tick_raw).cpu_in &= 0xff;
++        this_cpu(hyp_tick_raw).cpu_in >>= 8; /* affinity level 1 */
++        this_cpu(hyp_tick_raw).cpu_in &= 0xf;
+     } else {
+         this_cpu(hyp_tick_raw).tick_out = READ_SYSREG64(CNTPCT_EL0);
+         this_cpu(hyp_tick_raw).cpu_out = READ_SYSREG64(MPIDR_EL1);
+-        this_cpu(hyp_tick_raw).cpu_out >>= 2;
+-        this_cpu(hyp_tick_raw).cpu_out &= 0xff;
++        this_cpu(hyp_tick_raw).cpu_out >>= 8; /* affinity level 1 */
++        this_cpu(hyp_tick_raw).cpu_out &= 0xf;
+         /* Cal latency */
+         if (!this_cpu(hyp_tick_raw).flag) {
+             this_cpu(hyp_tick_raw).irq = 0;
+@@ -2282,6 +2292,8 @@ void do_trap_for_tick(int flag)
+             this_cpu(hyp_tick_raw).latency_tick = this_cpu(hyp_tick_raw).tick_out - this_cpu(hyp_tick_raw).tick_in;
+         }
+     }
++
++    do_tick_copy(smp_processor_id());
+ }
+ 
+ void do_trap_irq(struct cpu_user_regs *regs)
+-- 
+2.25.1
+
