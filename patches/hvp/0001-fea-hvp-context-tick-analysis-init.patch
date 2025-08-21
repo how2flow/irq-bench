@@ -1,0 +1,169 @@
+From 640209b9ca97d38f76cb854bcd273d3fd0956327 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=EC=A0=95=EA=B4=91=ED=98=84=20=28Steve=20Jeong=29?=
+ <steve.jeong@telechips.com>
+Date: Wed, 18 Jun 2025 17:37:18 +0900
+Subject: [PATCH] [fea] hvp: context tick analysis init
+
+TCS: XXX-XXXX
+---
+ .../vmm/arch/arm/src/v8/excHandler.c          | 57 +++++++++++++++++++
+ hv/hypervisor/vmm/arch/arm/src/v8/excStubs.s  |  7 +++
+ .../vmm/kernel/include/sys/wrhvInt.h          | 11 ++++
+ hv/psl/telechips/tcc807x/drv/armGicv3.c       |  2 +
+ 4 files changed, 77 insertions(+)
+
+diff --git a/hv/hypervisor/vmm/arch/arm/src/v8/excHandler.c b/hv/hypervisor/vmm/arch/arm/src/v8/excHandler.c
+index 00e4565..8b1660c 100644
+--- a/hv/hypervisor/vmm/arch/arm/src/v8/excHandler.c
++++ b/hv/hypervisor/vmm/arch/arm/src/v8/excHandler.c
+@@ -117,9 +117,16 @@ sys/wrhvInt.h, sys/syscalls.h, sys/wrhvDss.h, sys/hvEvtLogLibP.h.
+ #define FAULT_ADDR_SHIFT    8U
+ #define STAGE_2_FAULT_MASK  0xFFFU
+ 
++#define CNTPCT_EL0_GET(val)     \
++    __asm__ volatile ("MRS %0, CNTPCT_EL0" : "=r" (val))
++
++#define MPIDR_EL1_GET(val)     \
++    __asm__ volatile ("MRS %0, MPIDR_EL1" : "=r" (val))
++
+ /* globals */
+ 
+ ARCH_GLOBAL_STATS cpuStats [HV_MAX_CPU];
++CPU_PRIVATE struct hypTickRaw hypTickRaw;
+ 
+ /* locals */
+ 
+@@ -1603,6 +1610,56 @@ static void archWfiWfeHandler
+     return;
+     }
+ 
++
++/*******************************************************************************
++*
++* archTickHandler - for tick capture
++*
++* This subroutine services all irqs being routed to hypervisor.
++*
++* RETURNS: N/A
++*/
++
++void archTickHandler
++    (
++    int    flag  /* pointer to the context */
++    )
++    {
++
++                                                 /* req: archTickHandler_LLR_1 */
++
++    excLevel++;     /* do not reschedule until this completes */
++    /* Capture tick */
++    if (!flag)
++        {
++            CNTPCT_EL0_GET(hypTickRaw.tickIn);
++            MPIDR_EL1_GET(hypTickRaw.cpuIn);
++            hypTickRaw.cpuIn >>= 8;
++            hypTickRaw.cpuIn &= 0xf;
++        }
++    else
++        {
++            CNTPCT_EL0_GET(hypTickRaw.tickOut);
++            MPIDR_EL1_GET(hypTickRaw.cpuOut);
++            hypTickRaw.cpuOut >>= 8;
++            hypTickRaw.cpuOut &= 0xf;
++            /* Cal latency */
++            _WRS_ASM ("ISB");
++            if (!hypTickRaw.flag)
++                {
++                    hypTickRaw.irq = 0;
++                    hypTickRaw.flag = true;
++                }
++            else
++                {
++                    hypTickRaw.latencyTick = hypTickRaw.tickOut - hypTickRaw.tickIn;
++                }
++        }
++    excLevel--;
++
++    return;
++    }
++
+ /*******************************************************************************
+ *
+ * archIrqHandler - main handler for irq exceptions
+diff --git a/hv/hypervisor/vmm/arch/arm/src/v8/excStubs.s b/hv/hypervisor/vmm/arch/arm/src/v8/excStubs.s
+index 694b2bd..b443d0c 100644
+--- a/hv/hypervisor/vmm/arch/arm/src/v8/excStubs.s
++++ b/hv/hypervisor/vmm/arch/arm/src/v8/excStubs.s
+@@ -97,6 +97,7 @@ LDRA probe assembly.
+ 
+     FUNC_IMPORT(archIrqHandler)
+     FUNC_IMPORT(archSyncHandler)
++    FUNC_IMPORT(archTickHandler)
+     FUNC_IMPORT(excPanic)
+     FUNC_IMPORT(schedulerEvent)
+ 
+@@ -689,6 +690,9 @@ LDRA_ASM_PROBE_DISABLE
+     MRS X0, SPSR_EL2
+     STR W0, [SP, #(AARCH64_HREGS_SPSR_EL2)]
+ 
++    MOV X0, #0x0
++    BL archTickHandler
++
+     /* call the IRQ exception handler in C, archIrqHandler (ctx, HREG_SET) */
+ 
+     LDR X0, =ctx        /* load the address of var 'ctx' */
+@@ -712,6 +716,9 @@ LDRA_ASM_PROBE_DISABLE
+     LDR W0, [SP, #(AARCH64_HREGS_SPSR_EL2)]
+     MSR SPSR_EL2, X0
+ 
++    MOV X0, #0x1
++    BL archTickHandler
++
+     ADD SP, SP, #(AARCH64_HREGS_G_REG_BASE)
+ 
+     /* load the general purpose registers */
+diff --git a/hv/hypervisor/vmm/kernel/include/sys/wrhvInt.h b/hv/hypervisor/vmm/kernel/include/sys/wrhvInt.h
+index a9f36b7..7b49ddf 100644
+--- a/hv/hypervisor/vmm/kernel/include/sys/wrhvInt.h
++++ b/hv/hypervisor/vmm/kernel/include/sys/wrhvInt.h
+@@ -139,6 +139,17 @@ extern PUBLIC void     timeStampSet (uint64_t value);
+ extern PUBLIC uint64_t timeStampGet (void);
+ extern PUBLIC uint64_t vmTimeStampGet (void);
+ 
++struct hypTickRaw {
++    volatile uint32_t cpuIn;
++    volatile uint32_t cpuOut;
++    volatile uint32_t tickIn;
++    volatile uint32_t tickOut;
++    volatile uint32_t latencyTick;
++    volatile uint32_t irq;
++    bool flag;
++};
++
++
+ #endif /* _ASMLANGUAGE */
+ 
+ #ifdef __cplusplus
+diff --git a/hv/psl/telechips/tcc807x/drv/armGicv3.c b/hv/psl/telechips/tcc807x/drv/armGicv3.c
+index e45228b..8a298cc 100644
+--- a/hv/psl/telechips/tcc807x/drv/armGicv3.c
++++ b/hv/psl/telechips/tcc807x/drv/armGicv3.c
+@@ -188,6 +188,7 @@ static uint32_t gicEvictInt(ctx_t *pCtx, uint32_t localVec, bool_t queueIt);
+ static status_t gicVmIntDisableHelper (ctx_t *pCtx, uint32_t localVec, bool_t checkSPI);
+ 
+ static int intStateSort (DL_NODE *a, DL_NODE *b);
++extern volatile struct hypTickRaw hypTickRaw;
+ 
+ /* globals */
+ 
+@@ -1783,6 +1784,7 @@ static status_t gicIntGet
+     else
+         {
+         data = GIC_REG_READ_SPECIAL (ICC_IAR1_EL1);
++        hypTickRaw.irq = data;
+         }
+ 
+     if (data == GIC_SECURE_SPURIOUS_ID)
+-- 
+2.25.1
+
