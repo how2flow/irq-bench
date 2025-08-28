@@ -9,6 +9,8 @@ KERNEL ?= /lib/modules/$(shell uname -r)/build
 DTS ?= $(KERNEL)/arch/$(ARCH)/boot/dts
 CONFIG_NAME := IRQ_BENCH
 MODULE_NAME := irq-bench
+MSI_CONFIG_NAME := GENERIC_MSI
+MSI_MODULE_NAME := generic-msi
 DTS_DIR := $(CURDIR)/dts
 INC_DIR := $(CURDIR)/include
 PTH_DIR := $(CURDIR)/patches
@@ -68,6 +70,20 @@ integrate:
 		echo '  default y' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo '	help' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo '	  Enable the IRQ Benchmark driver (irq-bench) for performance testing.' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo 'endmenu' >> $(KERNEL)/drivers/misc/Kconfig; \
+	fi
+	@if ! grep -q "$(MSI_MODULE_NAME)" $(KERNEL)/drivers/misc/Makefile; then \
+		echo 'obj-$$\(CONFIG_$(MSI_CONFIG_NAME)) += $(MSI_MODULE_NAME).o' >> $(KERNEL)/drivers/misc/Makefile; \
+		sed -i 's/\\(CONFIG_$(MSI_CONFIG_NAME))/(CONFIG_$(MSI_CONFIG_NAME))/g' $(KERNEL)/drivers/misc/Makefile; \
+	fi
+	@if ! grep -q "$(MSI_CONFIG_NAME)" $(KERNEL)/drivers/misc/Kconfig; then \
+		sed -i '/^endmenu$$/d' "$(KERNEL)/drivers/misc/Kconfig"; \
+		echo "" >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo "config $(MSI_CONFIG_NAME)" >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	bool "GENERIC MSI Driver"' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	default y' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	help' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	  Enable the IRQ Benchmark driver (generic-msi) for performance testing.' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo 'endmenu' >> $(KERNEL)/drivers/misc/Kconfig; \
 	fi
 # for virtual machine of hypervisor #

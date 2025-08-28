@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (C) 2025 Steve Jeong <steve@how2flow.net>
+ */
+
+/ {
+	/*
+	 * For emulating msi, need to dummy paltform device
+	 */
+	dummy: dummy@1a00a0000 {
+		compatible = "dummy,dev";
+		reg = <0x1 0xa00a0000 0x0 0x1000>;
+		msi-parent = <&its0 0x1>;
+	};
+};
+
+/* Add it if there is no its node.
+&gic {
+	its0: msi-controller@800040000 {
+		compatible = "arm,gic-v3-its";
+		msi-controller;
+		#msi-cells = <1>;
+		reg = <0x0 0x80040000 0x0 0x20000>;
+		//dma-noncoherent; // Linux Kernel support it from v6.6 and later.
+	};
+};
+*/
+
+&reserved_memory {
+	dummy_region {
+		reg = <0x1 0xa00a0000 0x0 0x1000>;
+		no-map;
+	};
+};
+
