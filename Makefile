@@ -62,7 +62,7 @@ integrate:
 		echo 'obj-$$\(CONFIG_$(CONFIG_NAME)) += $(MODULE_NAME).o' >> $(KERNEL)/drivers/misc/Makefile; \
 		sed -i 's/\\(CONFIG_$(CONFIG_NAME))/(CONFIG_$(CONFIG_NAME))/g' $(KERNEL)/drivers/misc/Makefile; \
 		echo 'obj-$$\(CONFIG_$(MSI_CONFIG_NAME)) += $(MSI_NAME).o' >> $(KERNEL)/drivers/misc/Makefile; \
-		sed -i 's/\\(CONFIG_$(CONFIG_NAME))/(CONFIG_$(CONFIG_NAME))/g' $(KERNEL)/drivers/misc/Makefile; \
+		sed -i 's/\\(CONFIG_$(MSI_CONFIG_NAME))/(CONFIG_$(MSI_CONFIG_NAME))/g' $(KERNEL)/drivers/misc/Makefile; \
 	fi
 	@if ! grep -q "$(MODULE_NAME)" $(KERNEL)/drivers/misc/Kconfig; then \
 		sed -i '/^endmenu$$/d' "$(KERNEL)/drivers/misc/Kconfig"; \
