@@ -9,12 +9,15 @@ KERNEL ?= /lib/modules/$(shell uname -r)/build
 DTS ?= $(KERNEL)/arch/$(ARCH)/boot/dts
 CONFIG_NAME := IRQ_BENCH
 MODULE_NAME := irq-bench
+MSI_NAME := generic-msi
+MSI_CONFIG_NAME := GENERIC_MSI
 DTS_DIR := $(CURDIR)/dts
 INC_DIR := $(CURDIR)/include
 SRC_DIR := $(CURDIR)/src
 
 # Source Files
 DTSFILE := $(wildcard $(DTS_DIR)/*.dts*)
+DTSNAME := $(notdir $(DTSFILE))
 HEADERS := $(wildcard $(INC_DIR)/*.h)
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(patsubst %.c, %.o, $(SOURCES))
@@ -48,11 +51,15 @@ integrate:
 	@cp $(SOURCES) $(KERNEL)/drivers/misc/
 	@cp $(HEADERS) $(KERNEL)/drivers/misc/
 	@cp $(DTSFILE) $$(dirname "$(KERNEL)/$(DTS)")
-	@if ! grep -q "$(MODULE_NAME)" $(KERNEL)/$(DTS); then \
-		echo '#include "irq-bench.dtsi"' >> $(KERNEL)/$(DTS); \
-	fi
+	@for dtsi in $(DTSNAME); do \
+		if ! grep -q "$$dtsi" $(KERNEL)/$(DTS); then \
+			echo '#include "'$$dtsi'"' >> $(KERNEL)/$(DTS); \
+		fi \
+	done
 	@if ! grep -q "$(MODULE_NAME)" $(KERNEL)/drivers/misc/Makefile; then \
 		echo 'obj-$$\(CONFIG_$(CONFIG_NAME)) += $(MODULE_NAME).o' >> $(KERNEL)/drivers/misc/Makefile; \
+		sed -i 's/\\(CONFIG_$(CONFIG_NAME))/(CONFIG_$(CONFIG_NAME))/g' $(KERNEL)/drivers/misc/Makefile; \
+		echo 'obj-$$\(CONFIG_$(MSI_CONFIG_NAME)) += $(MSI_NAME).o' >> $(KERNEL)/drivers/misc/Makefile; \
 		sed -i 's/\\(CONFIG_$(CONFIG_NAME))/(CONFIG_$(CONFIG_NAME))/g' $(KERNEL)/drivers/misc/Makefile; \
 	fi
 	@if ! grep -q "$(MODULE_NAME)" $(KERNEL)/drivers/misc/Kconfig; then \
@@ -63,9 +70,14 @@ integrate:
 		echo '	default y' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo '	help' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo '	  Enable the IRQ Benchmark driver (irq-bench) for performance testing.' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo "" >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo "config $(MSI_CONFIG_NAME)" >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	bool "Generic msi Driver"' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	default y' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	help' >> $(KERNEL)/drivers/misc/Kconfig; \
+		echo '	  Enable the generic msi.' >> $(KERNEL)/drivers/misc/Kconfig; \
 		echo "endmenu" >> $(KERNEL)/drivers/misc/Kconfig; \
 	fi
-	@echo "Integration complete. Run 'make menuconfig' in $(KERNEL) to enable CONFIG_IRQ_BENCH."
 
 clean:
 	@echo "Cleaning build artifacts"
