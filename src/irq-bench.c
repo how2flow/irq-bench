@@ -23,9 +23,10 @@
 #include <linux/smp.h>
 #include <linux/string.h>
 
+#include "generic-msi.h"
 #include "irq-bench.h"
 
-
+static bool msi_setup = false;
 static int bench_times = 5000;
 
 static int bench_of_irq_init(struct platform_device *pdev, struct bench_list *list)
@@ -67,6 +68,20 @@ static int bench_of_irq_init(struct platform_device *pdev, struct bench_list *li
 	return 0;
 }
 
+static int bench_of_msi_init(struct platform_device *pdev, struct bench_list *list)
+{
+	list->msi_opt = (struct lpi_bench_table *)device_get_match_data(&pdev->dev);
+	if (list->msi_opt->supported && shared_lpi_irqnr) {
+		list->msi_opt->irq = shared_lpi_irqnr;
+		list->msi_opt->desc = irq_to_desc(list->msi_opt->irq);
+		list->msi_opt->chip = irq_desc_get_chip(list->msi_opt->desc);
+		list->msi_opt->data = irq_desc_get_irq_data(list->msi_opt->desc);
+		msi_setup = true;
+	}
+
+	return 0;
+}
+
 /* EOI benchmark functions */
 static void eoi_bench_setup(struct bench_list *list)
 {
@@ -85,6 +100,44 @@ static void eoi_bench_start(struct bench_list *list)
 }
 
 static void eoi_bench_end(struct bench_list *list)
+{
+	list->end_time = ktime_get();
+	list->total_ns = ktime_to_ns(ktime_sub(list->end_time, list->start_time));
+	list->valid = true;
+}
+
+/* LPI benchmark functions */
+static void lpi_bench_setup(struct bench_list *list)
+{
+	if(!msi_setup && list->msi_opt->supported) {
+		if (shared_lpi_irqnr) {
+			list->msi_opt->irq = shared_lpi_irqnr;
+			list->msi_opt->desc = irq_to_desc(list->msi_opt->irq);
+			list->msi_opt->chip = irq_desc_get_chip(list->msi_opt->desc);
+			list->msi_opt->data = irq_desc_get_irq_data(list->msi_opt->desc);
+			msi_setup = true;
+		}
+	}
+	list->valid = false;
+	list->stats = 0;
+}
+
+static void lpi_bench_start(struct bench_list *list)
+{
+	int ntimes, ret;
+
+	if (list->msi_opt->chip) {
+		for (ntimes = 0; bench_times > ntimes; ntimes++) {
+			ret = list->msi_opt->chip->irq_retrigger(list->msi_opt->data);
+			if (ret < 0) {
+				pr_err("LPI msi failed: %d\n", ret);
+				break;
+			}
+		}
+	}
+}
+
+static void lpi_bench_end(struct bench_list *list)
 {
 	list->end_time = ktime_get();
 	list->total_ns = ktime_to_ns(ktime_sub(list->end_time, list->start_time));
@@ -198,6 +251,13 @@ static struct bench_list eoi_bench = {
 	.setup = eoi_bench_setup,
 	.start = eoi_bench_start,
 	.end = eoi_bench_end,
+};
+
+static struct bench_list lpi_bench = {
+	.type = "lpi",
+	.setup = lpi_bench_setup,
+	.start = lpi_bench_start,
+	.end = lpi_bench_end,
 };
 
 static struct bench_list sgi_bench = {
@@ -317,6 +377,7 @@ static ssize_t set_benchmark_times(struct kobject *kobj, struct kobj_attribute *
 static struct kobj_attribute bench_setup_attr = __ATTR(benchmark, 0200, NULL, set_benchmark);
 static struct kobj_attribute bench_times_attr = __ATTR(times, 0644, get_benchmark_times, set_benchmark_times);
 static struct kobj_attribute eoi_result_attr = __ATTR(eoi, 0444, get_bench_result, NULL);
+static struct kobj_attribute lpi_result_attr = __ATTR(lpi, 0444, get_bench_result, NULL);
 static struct kobj_attribute sgi_result_attr = __ATTR(sgi, 0444, get_bench_result, NULL);
 static struct kobj_attribute spi_result_attr = __ATTR(spi, 0444, get_bench_result, NULL);
 
@@ -335,6 +396,7 @@ static int setup_sysfs_attrs(void)
 
 	/* benchmark irqs */
 	sysfs_attrs[BENCH_EOI] = &eoi_result_attr.attr;
+	sysfs_attrs[BENCH_LPI] = &lpi_result_attr.attr;
 	sysfs_attrs[BENCH_SGI] = &sgi_result_attr.attr;
 	if (pic_base)
 		sysfs_attrs[BENCH_SPI] = &spi_result_attr.attr;
@@ -404,6 +466,7 @@ static int irq_bench_probe(struct platform_device *pdev)
 
 	/* Initialize bench commands */
 	benchmark_list[BENCH_EOI] = eoi_bench;
+	benchmark_list[BENCH_LPI] = lpi_bench;
 	benchmark_list[BENCH_SGI] = sgi_bench;
 	if (pic_base) {
 		benchmark_list[BENCH_SPI] = spi_bench;
@@ -413,6 +476,11 @@ static int irq_bench_probe(struct platform_device *pdev)
 	}
 
 	/* Initialize IRQ data */
+	ret = bench_of_msi_init(pdev, &benchmark_list[BENCH_LPI]);
+	if (ret < 0) {
+		pr_err("Failed to initializing irq-bench msi: %d\n", ret);
+		goto cleanup_sysfs;
+	}
 	if (pic_base) {
 		ret = bench_of_irq_init(pdev, &benchmark_list[BENCH_SPI]);
 		if (ret < 0) {
@@ -459,9 +527,22 @@ static int irq_bench_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static struct lpi_bench_table msi_none = {
+	.supported = false,
+	.valid = false,
+};
+
+static struct lpi_bench_table msi_info = {
+	.supported = true,
+	.valid = false,
+};
+
 /* Platform driver definition */
 static const struct of_device_id irq_bench_of_match[] = {
-	{ .compatible = "generic,irq-bench" },
+	{ .compatible = "generic,irq-bench",
+	  .data = &msi_none, },
+	{ .compatible = "generic,irq-bench-msi",
+	  .data = &msi_info, },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, irq_bench_of_match);

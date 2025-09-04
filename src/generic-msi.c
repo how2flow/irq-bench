@@ -16,8 +16,12 @@
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 
+#include "generic-msi.h"
 
 #define DRIVER_NAME "dummy_driver"
+
+
+int shared_lpi_irqnr;
 
 struct dummy_dev {
 	void __iomem *base;
@@ -80,6 +84,7 @@ static int dummy_msi_probe(struct platform_device *pdev)
 	}
 
 	dev->msi_irq=msi_get_virq(&pdev->dev, 0);
+	shared_lpi_irqnr = dev->msi_irq;
 
 	ret = devm_request_irq(&pdev->dev, dev->msi_irq, dummy_msi_irq_handler,
 	                       0, DRIVER_NAME, dev);
