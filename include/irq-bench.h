@@ -18,6 +18,7 @@
 
 enum bench_type {
 	BENCH_EOI,
+	BENCH_LPI,
 	BENCH_SGI,
 	BENCH_SPI,
 /* count termination */
@@ -29,6 +30,15 @@ enum bench_common {
 	BENCH_TIMES,
 /* count termination */
 	BENCH_COMMON
+};
+
+struct lpi_bench_table {
+	bool supported;
+	bool valid;
+	int irq;
+	struct irq_chip *chip;
+	struct irq_data *data;
+	struct irq_desc *desc;
 };
 
 struct bench_list {
@@ -46,6 +56,7 @@ struct bench_list {
 	struct irq_chip *chip;
 	struct irq_data *data;
 	struct irq_desc *desc;
+	struct lpi_bench_table *msi_opt;
 };
 
 static struct attribute **sysfs_attrs;

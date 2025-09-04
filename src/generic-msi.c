@@ -16,8 +16,12 @@
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 
+#include "generic-msi.h"
 
 #define DRIVER_NAME "dummy_driver"
+
+
+int shared_lpi_irqnr;
 
 struct dummy_dev {
 	void __iomem *base;
@@ -35,11 +39,8 @@ static void dummy_write_msi_msg(struct msi_desc *desc, struct msi_msg *msg)
 {
 	/* In a real implementation, msg would be programmed with the ITS doorbell
 	 * address and the allocated LPI vector.
-	 * For this dummy driver, we simply zero them.
+	 * For this dummy driver, Do nothing.
 	 */
-	msg->address_lo = 0;
-	msg->address_hi = 0;
-	msg->data = 0;
 }
 
 static int dummy_msi_probe(struct platform_device *pdev)
@@ -79,7 +80,8 @@ static int dummy_msi_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	dev->msi_irq=msi_get_virq(&pdev->dev, 0);
+	dev->msi_irq=msi_get_virq(&pdev->dev, 0); // msi_irq = desc->irq; (desc = first_msi_entry(&pdev->dev);)
+	shared_lpi_irqnr = dev->msi_irq;
 
 	ret = devm_request_irq(&pdev->dev, dev->msi_irq, dummy_msi_irq_handler,
 	                       0, DRIVER_NAME, dev);
